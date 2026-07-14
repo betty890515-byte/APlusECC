@@ -158,10 +158,9 @@ const db = getDatabase(app);
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const IMGBB_KEY = 'bf4527c3aa6bd9f9d777c72d26268251';
 let courses = {};
-let weeklySchedules = {}; 
+let settings = { weeklyScheduleUrl: '' }; // 改回單一圖檔結構
 let selectedDate = todayISO();
 let activeTab = 'today';
-let activeWeeklyWeek = ''; 
 
 function todayISO() {
   const d = new Date();
@@ -210,12 +209,9 @@ async function deleteCourse(id) {
   await set(ref(db, `courses/${id}`), null);
   delete courses[id];
 }
-async function saveWeeklySchedule(weekName, imageUrl) {
-  await set(ref(db, `weeklySchedules/${weekName}`), imageUrl);
-}
-async function deleteWeeklySchedule(weekName) {
-  await set(ref(db, `weeklySchedules/${weekName}`), null);
-  delete weeklySchedules[weekName];
+async function saveSettings(data) {
+  await set(ref(db, 'settings'), data);
+  settings = data;
 }
 
 // Listen for real-time updates
@@ -223,14 +219,11 @@ onValue(ref(db, 'courses'), snap => {
   courses = snap.val() || {};
   rerenderActive();
 });
-onValue(ref(db, 'weeklySchedules'), snap => {
-  const val = snap.val();
-  if (val && typeof val === 'object') {
-    weeklySchedules = val;
-  } else {
-    weeklySchedules = {};
+onValue(ref(db, 'settings'), snap => {
+  if (snap.val()) {
+    settings = { ...settings, ...snap.val() };
+    if (activeTab === 'weekly') renderWeekly();
   }
-  if (activeTab === 'weekly') renderWeekly();
 });
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
@@ -373,49 +366,20 @@ function selectDay(iso) {
   renderTodayContent();
 }
 
-// ── 2. WEEKLY VIEW (當週課表 - 多週圖檔) ───────────────────────────────────────
+// ── 2. WEEKLY VIEW (當週課表 - 改回100%保證顯示的單張大圖) ──────────────────────
 function renderWeekly() {
-  const weeks = Object.keys(weeklySchedules || {}).filter(w => typeof weeklySchedules[w] === 'string').sort();
-  
-  if (!weeks.length) {
-    let emptyHtml = `
-      <div class="today-header" style="margin-bottom: 8px;">
-        <div>
-          <div class="today-date-label">Weekly Schedule</div>
-          <div class="today-date" style="font-size: 22px;">當週課表圖檔展示</div>
-        </div>
-      </div>
-      <div class="empty-state" style="background:#fff; border-radius:12px; border:1px solid #E8E8E8;">
-        <div class="icon">🖼️</div>
-        <p>目前尚未上傳任何週度的課表圖檔</p>
-      </div>
-      ${renderWeeklyUploadSection()}`;
-    document.getElementById('tab-weekly').innerHTML = emptyHtml;
-    initWeeklyUploadListener();
-    return;
-  }
+  let imgHtml = settings.weeklyScheduleUrl 
+    ? `<img src="${esc(settings.weeklyScheduleUrl)}" style="width:100%; border-radius:12px; border:1px solid #E8E8E8; display:block; margin-top:12px;">` 
+    : `<div class="empty-state" style="background:#fff; border-radius:12px; border:1px solid #E8E8E8;"><div class="icon">🖼️</div><p>目前尚未上傳當週課表圖檔</p></div>`;
 
-  if (!activeWeeklyWeek || !weeklySchedules[activeWeeklyWeek]) {
-    activeWeeklyWeek = weeks[weeks.length - 1];
-  }
-
-  let pickerHtml = '<div class="day-picker" style="margin-bottom:16px;">';
-  weeks.forEach(w => {
-    const isActive = w === activeWeeklyWeek;
-    const cls = ['day-btn', isActive ? 'active' : ''].filter(Boolean).join(' ');
-    pickerHtml += `<button class="${cls}" style="min-width:90px;" onclick="selectWeeklyWeek('${esc(w)}')">
-      <span class="dn" style="font-size:12px;">${esc(w)}</span>
-    </button>`;
-  });
-  pickerHtml += '</div>';
-
-  const currentImgUrl = weeklySchedules[activeWeeklyWeek];
-  let imgHtml = `
-    <div style="position:relative;">
-      <img src="${esc(currentImgUrl)}" style="width:100%; border-radius:12px; border:1px solid #E8E8E8; display:block;">
-      <button onclick="doDeleteWeeklySchedule('${esc(activeWeeklyWeek)}')" class="danger" style="position:absolute; top:12px; right:12px; padding:6px 12px; font-size:11px; font-weight:600; box-shadow:0 2px 8px rgba(0,0,0,0.15); background:#fff;">
-        🗑️ 刪除此週圖檔
+  let uploadSection = `
+    <div class="card" style="margin-top: 24px; border-style: dashed;">
+      <h3 style="font-size:14px; margin-bottom:8px;">上傳 / 更新當週課表圖檔</h3>
+      <button type="button" class="primary" onclick="triggerScheduleUpload()" style="width:100%; padding:12px; font-size:14px; display:flex; align-items:center; justify-content:center; gap:8px;">
+        <i class="ti ti-photo-up" style="font-size:18px"></i>選擇手機照片 / 電腦課表圖檔上傳
       </button>
+      <input type="file" accept="image/*" id="schedule-img-input" style="display:none;">
+      <span id="schedule-upload-status" style="font-size:13px; color:#1A6FA8; font-weight:500; display:block; margin-top:8px; text-align:center;"></span>
     </div>`;
 
   document.getElementById('tab-weekly').innerHTML = `
@@ -424,41 +388,17 @@ function renderWeekly() {
         <div class="today-date-label">Weekly Schedule</div>
         <div class="today-date" style="font-size: 22px;">當週課表圖檔展示</div>
       </div>
-      <span class="badge badge-blue">${weeks.length} 週課表</span>
     </div>
-    ${pickerHtml}
     ${imgHtml}
-    ${renderWeeklyUploadSection()}`;
+    ${uploadSection}`;
 
   initWeeklyUploadListener();
-}
-
-function renderWeeklyUploadSection() {
-  return `
-    <div class="card" style="margin-top: 24px; border-style: dashed;">
-      <h3 style="font-size:14px; margin-bottom:8px;">新增 / 更新週度課表圖檔</h3>
-      <div class="grid2" style="margin-bottom:10px; grid-template-columns: 1fr;">
-        <div>
-          <label style="margin-top:0;">1. 輸入週度名稱 (若留空，系統會自動填寫當日日期)</label>
-          <input type="text" id="schedule-week-name" placeholder="例如：7/20~7/24" style="padding:10px 12px; font-size:14px; margin-bottom: 12px;">
-        </div>
-        <div>
-          <label style="margin-top:0;">2. 點擊按鈕選取並上傳圖片</label>
-          <button type="button" class="primary" onclick="triggerScheduleUpload()" style="width:100%; padding:12px; font-size:14px; display:flex; align-items:center; justify-content:center; gap:8px;">
-            <i class="ti ti-photo-up" style="font-size:18px"></i>選擇手機照片 / 電腦圖檔上傳
-          </button>
-          <input type="file" accept="image/*" id="schedule-img-input" style="display:none;">
-        </div>
-      </div>
-      <span id="schedule-upload-status" style="font-size:13px; color:#1A6FA8; font-weight:500; display:block; margin-top:8px; text-align:center;"></span>
-    </div>`;
 }
 
 window.triggerScheduleUpload = function() {
   document.getElementById('schedule-img-input').click();
 };
 
-// ── 圖片壓縮轉檔核心技術 (解決大圖及HEIC破圖問題) ──────────────────────────────
 async function compressAndConvertToPng(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -468,33 +408,27 @@ async function compressAndConvertToPng(file) {
         const canvas = document.createElement('canvas');
         let width = img.width;
         let height = img.height;
-        
-        // 如果圖片解析度太大（例如寬度大於1920），自動等比例縮小以防伺服器拒收
         const MAX_WIDTH = 1920;
         if (width > MAX_WIDTH) {
           height = Math.round((height * MAX_WIDTH) / width);
           width = MAX_WIDTH;
         }
-        
         canvas.width = width;
         canvas.height = height;
-        
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
-        
-        // 匯出為極輕量的 jpeg 格式
         canvas.toBlob((blob) => {
           if (blob) {
-            resolve(new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { type: "image/jpeg" }));
+            resolve(new File([blob], "schedule_compressed.jpg", { type: "image/jpeg" }));
           } else {
-            reject(new Error("Canvas to blob conversion failed"));
+            reject(new Error("Canvas to blob failed"));
           }
-        }, 'image/jpeg', 0.82); // 82% 品質壓縮率
+        }, 'image/jpeg', 0.82);
       };
-      img.onerror = () => reject(new Error("Image loading failed"));
+      img.onerror = () => reject(new Error("Image error"));
       img.src = event.target.result;
     };
-    reader.onerror = () => reject(new Error("File reading failed"));
+    reader.onerror = () => reject(new Error("Reader error"));
     reader.readAsDataURL(file);
   });
 }
@@ -502,51 +436,25 @@ async function compressAndConvertToPng(file) {
 function initWeeklyUploadListener() {
   const input = document.getElementById('schedule-img-input');
   if (!input) return;
-  
   input.onchange = async function(e) {
     const file = e.target.files[0];
     if (!file) return;
-    
-    const weekNameIn = document.getElementById('schedule-week-name');
-    let weekName = (weekNameIn ? weekNameIn.value : '').trim();
-    
-    if (!weekName) {
-      const today = new Date();
-      weekName = `${today.getMonth()+1}/${today.getDate()} 課表`;
-    }
 
     const status = document.getElementById('schedule-upload-status');
-    if (status) status.innerHTML = `<span style="color:#C67C00;">⏳ 「${weekName}」正在壓縮處理圖檔中...</span>`;
-    
+    if (status) status.innerHTML = `⏳ 正在為您優化轉檔課表圖片，請稍候...`;
+
     try {
-      // 核心升級：上傳前自動在瀏覽器本機端壓縮
       const processedFile = await compressAndConvertToPng(file);
-      
-      if (status) status.innerHTML = `<span style="color:#1A6FA8;">🚀 轉檔壓縮成功！正在傳送至雲端儲存庫...</span>`;
-      
+      if (status) status.innerHTML = `🚀 正在上傳至佈告欄...`;
       const url = await uploadImage(processedFile);
-      await saveWeeklySchedule(weekName, url);
-      if (status) status.innerHTML = `<span style="color:#1E7E34;">✓ 「${weekName}」課表上傳成功！</span>`;
-      activeWeeklyWeek = weekName; 
-      setTimeout(() => {
-        renderWeekly();
-      }, 1000);
+      settings.weeklyScheduleUrl = url;
+      await saveSettings(settings);
+      if (status) status.innerHTML = `<span style="color:#1E7E34;">✓ 課表圖檔更新成功！</span>`;
+      renderWeekly();
     } catch(err) {
-      if (status) status.innerHTML = `<span style="color:#C62828;">❌ 轉檔或上傳失敗，請嘗試使用其他瀏覽器上傳</span>`;
+      if (status) status.innerHTML = `<span style="color:#C62828;">❌ 上傳失敗，請再試一次</span>`;
     }
   };
-}
-
-function selectWeeklyWeek(weekName) {
-  activeWeeklyWeek = weekName;
-  renderWeekly();
-}
-
-async function doDeleteWeeklySchedule(weekName) {
-  if (!confirm(`確定要刪除「${weekName}」的課表圖檔嗎？`)) return;
-  await deleteWeeklySchedule(weekName);
-  activeWeeklyWeek = '';
-  renderWeekly();
 }
 
 // ── 3. TEACHER VIEW (老師填寫) ───────────────────────────────────────────────
@@ -675,17 +583,15 @@ async function uploadImage(file) {
   throw new Error('Upload failed');
 }
 
-// 英語老師教材上傳連動自動壓縮防爆
 document.addEventListener('change', async function(e) {
   if (!e.target.classList.contains('ecc-img-input')) return;
   const id = e.target.dataset.cid;
   const file = e.target.files[0];
   if (!file) return;
   const status = document.getElementById('img-status-' + id);
-  if (status) { status.textContent = '⏳ 正在在手機端進行無損壓縮轉檔...'; status.style.color = '#888'; }
+  if (status) { status.textContent = '⏳ 正在壓縮並上傳教材截圖...'; status.style.color = '#888'; }
   try {
     const processedFile = await compressAndConvertToPng(file);
-    if (status) { status.textContent = '🚀 正在上傳至教案資料庫...'; }
     const url = await uploadImage(processedFile);
     const course = courses[id];
     if (!course) return;
@@ -874,8 +780,6 @@ window.selectDay = selectDay;
 window.renderTeacherCourses = renderTeacherCourses;
 window.saveField = saveField;
 window.deleteImage = deleteImage;
-window.selectWeeklyWeek = selectWeeklyWeek;
-window.doDeleteWeeklySchedule = doDeleteWeeklySchedule;
 window.renderCourseList = renderCourseList;
 window.doImport = doImport;
 window.addSingle = addSingle;
