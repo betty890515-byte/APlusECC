@@ -52,7 +52,7 @@
   /* Divider */
   .divider{border-top:1px solid #EEE;margin:20px 0}
 
-  /* Today View */
+  /* Today & Weekly Picker */
   .today-header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:16px}
   .today-date-label{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
   .today-date{font-size:26px;font-weight:600}
@@ -158,9 +158,10 @@ const db = getDatabase(app);
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const IMGBB_KEY = 'bf4527c3aa6bd9f9d777c72d26268251';
 let courses = {};
-let settings = { weeklyScheduleUrl: '' }; 
+let weeklySchedules = {}; // 支援多週圖檔的資料庫結構
 let selectedDate = todayISO();
 let activeTab = 'today';
+let activeWeeklyWeek = ''; // 當前在當週課表選取的週度名稱
 
 function todayISO() {
   const d = new Date();
@@ -209,9 +210,12 @@ async function deleteCourse(id) {
   await set(ref(db, `courses/${id}`), null);
   delete courses[id];
 }
-async function saveSettings(data) {
-  await set(ref(db, 'settings'), data);
-  settings = data;
+async function saveWeeklySchedule(weekName, imageUrl) {
+  await set(ref(db, `weeklySchedules/${weekName}`), imageUrl);
+}
+async function deleteWeeklySchedule(weekName) {
+  await set(ref(db, `weeklySchedules/${weekName}`), null);
+  delete weeklySchedules[weekName];
 }
 
 // Listen for real-time updates
@@ -219,11 +223,9 @@ onValue(ref(db, 'courses'), snap => {
   courses = snap.val() || {};
   rerenderActive();
 });
-onValue(ref(db, 'settings'), snap => {
-  if (snap.val()) {
-    settings = { ...settings, ...snap.val() };
-    if (activeTab === 'weekly') renderWeekly();
-  }
+onValue(ref(db, 'weeklySchedules'), snap => {
+  weeklySchedules = snap.val() || {};
+  if (activeTab === 'weekly') renderWeekly();
 });
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
@@ -366,20 +368,52 @@ function selectDay(iso) {
   renderTodayContent();
 }
 
-// ── 2. WEEKLY VIEW (當週課表 - 免密碼上傳圖檔) ──────────────────────────────────
+// ── 2. WEEKLY VIEW (當週課表 - 多週 Schedule 圖檔看板展示) ─────────────────────────
 function renderWeekly() {
-  let imgHtml = settings.weeklyScheduleUrl 
-    ? `<img src="${esc(settings.weeklyScheduleUrl)}" style="width:100%; border-radius:12px; border:1px solid #E8E8E8; display:block; margin-top:12px;">` 
-    : `<div class="empty-state" style="background:#fff; border-radius:12px; border:1px solid #E8E8E8;"><div class="icon">🖼️</div><p>目前尚未上傳本週課表圖檔</p></div>`;
+  const weeks = Object.keys(weeklySchedules || {}).sort();
+  
+  if (!weeks.length) {
+    let emptyHtml = `
+      <div class="today-header" style="margin-bottom: 8px;">
+        <div>
+          <div class="today-date-label">Weekly Schedule</div>
+          <div class="today-date" style="font-size: 22px;">當週課表圖檔展示</div>
+        </div>
+      </div>
+      <div class="empty-state" style="background:#fff; border-radius:12px; border:1px solid #E8E8E8;">
+        <div class="icon">🖼️</div>
+        <p>目前尚未上傳任何週度的課表圖檔</p>
+      </div>
+      ${renderWeeklyUploadSection()}`;
+    document.getElementById('tab-weekly').innerHTML = emptyHtml;
+    initWeeklyUploadListener();
+    return;
+  }
 
-  let uploadSection = `
-    <div class="card" style="margin-top: 16px; border-style: dashed;">
-      <h3 style="font-size:14px; margin-bottom:6px;">更新當週課表圖檔 (免密碼直接上傳)</h3>
-      <label class="img-upload-btn" style="display:inline-flex; cursor:pointer; margin-top:0;">
-        <input type="file" accept="image/*" id="schedule-img-input" style="position:absolute; opacity:0; width:1px; height:1px; overflow:hidden">
-        <i class="ti ti-photo-up" style="font-size:15px"></i>&nbsp;上傳最新課表圖檔
-      </label>
-      <span id="schedule-upload-status" style="font-size:12px; margin-left:10px; color:#888;"></span>
+  // 預設選擇最新（最後面）的一週
+  if (!activeWeeklyWeek || !weeklySchedules[activeWeeklyWeek]) {
+    activeWeeklyWeek = weeks[weeks.length - 1];
+  }
+
+  // 生成週度選擇按鈕
+  let pickerHtml = '<div class="day-picker" style="margin-bottom:16px;">';
+  weeks.forEach(w => {
+    const isActive = w === activeWeeklyWeek;
+    const cls = ['day-btn', isActive ? 'active' : ''].filter(Boolean).join(' ');
+    // 這裡點擊會觸發切換
+    pickerHtml += `<button class="${cls}" style="min-width:90px;" onclick="selectWeeklyWeek('${esc(w)}')">
+      <span class="dn" style="font-size:12px;">${esc(w)}</span>
+    </button>`;
+  });
+  pickerHtml += '</div>';
+
+  const currentImgUrl = weeklySchedules[activeWeeklyWeek];
+  let imgHtml = `
+    <div style="position:relative;">
+      <img src="${esc(currentImgUrl)}" style="width:100%; border-radius:12px; border:1px solid #E8E8E8; display:block;">
+      <button onclick="doDeleteWeeklySchedule('${esc(activeWeeklyWeek)}')" class="danger" style="position:absolute; top:12px; right:12px; padding:6px 12px; font-size:11px; font-weight:600; box-shadow:0 2px 8px rgba(0,0,0,0.15);">
+        🗑️ 刪除此週圖檔
+      </button>
     </div>`;
 
   document.getElementById('tab-weekly').innerHTML = `
@@ -388,25 +422,73 @@ function renderWeekly() {
         <div class="today-date-label">Weekly Schedule</div>
         <div class="today-date" style="font-size: 22px;">當週課表圖檔展示</div>
       </div>
+      <span class="badge badge-blue">${weeks.length} 週課表</span>
     </div>
+    ${pickerHtml}
     ${imgHtml}
-    ${uploadSection}`;
+    ${renderWeeklyUploadSection()}`;
 
+  initWeeklyUploadListener();
+}
+
+function renderWeeklyUploadSection() {
+  return `
+    <div class="card" style="margin-top: 24px; border-style: dashed;">
+      <h3 style="font-size:14px; margin-bottom:8px;">新增 / 更新週度課表圖檔</h3>
+      <div class="grid2" style="margin-bottom:10px;">
+        <div>
+          <label style="margin-top:0;">1. 輸入週度名稱</label>
+          <input type="text" id="schedule-week-name" placeholder="例如：7/20~7/24" style="padding:6px 10px; font-size:13px;">
+        </div>
+        <div>
+          <label style="margin-top:0;">2. 點擊上傳圖檔</label>
+          <label class="img-upload-btn" style="display:inline-flex; cursor:pointer; margin-top:0; width:100%; justify-content:center; padding:7px 10px;">
+            <input type="file" accept="image/*" id="schedule-img-input" style="position:absolute; opacity:0; width:1px; height:1px; overflow:hidden">
+            <i class="ti ti-photo-up" style="font-size:15px"></i>&nbsp;選擇電腦圖片上傳
+          </label>
+        </div>
+      </div>
+      <span id="schedule-upload-status" style="font-size:12px; color:#888;"></span>
+    </div>`;
+}
+
+function initWeeklyUploadListener() {
   document.getElementById('schedule-img-input')?.addEventListener('change', async function(e) {
     const file = e.target.files[0];
     if (!file) return;
+    
+    const weekNameIn = document.getElementById('schedule-week-name');
+    const weekName = (weekNameIn ? weekNameIn.value : '').trim();
+    if (!weekName) {
+      alert('請先輸入「週度名稱」（例如：7/20~7/24），才能上傳圖片喔！');
+      e.target.value = '';
+      return;
+    }
+
     const status = document.getElementById('schedule-upload-status');
-    if (status) status.textContent = '圖檔上傳中...';
+    if (status) status.textContent = `「${weekName}」課表圖檔上傳中...`;
     try {
       const url = await uploadImage(file);
-      settings.weeklyScheduleUrl = url;
-      await saveSettings(settings);
-      if (status) status.textContent = '✓ 課表圖檔更新成功！';
+      await saveWeeklySchedule(weekName, url);
+      if (status) status.textContent = `✓ 「${weekName}」上傳成功！`;
+      activeWeeklyWeek = weekName; // 上傳完自動跳轉到那一週
       renderWeekly();
     } catch(err) {
-      if (status) status.textContent = '上傳失敗，請重試';
+      if (status) status.textContent = '上傳失敗，請重新再試一次';
     }
   });
+}
+
+function selectWeeklyWeek(weekName) {
+  activeWeeklyWeek = weekName;
+  renderWeekly();
+}
+
+async function doDeleteWeeklySchedule(weekName) {
+  if (!confirm(`確定要刪除「${weekName}」的課表圖檔嗎？`)) return;
+  await deleteWeeklySchedule(weekName);
+  activeWeeklyWeek = '';
+  renderWeekly();
 }
 
 // ── 3. TEACHER VIEW (老師填寫 - 下拉選單填寫教案) ───────────────────────────────
@@ -726,6 +808,8 @@ window.selectDay = selectDay;
 window.renderTeacherCourses = renderTeacherCourses;
 window.saveField = saveField;
 window.deleteImage = deleteImage;
+window.selectWeeklyWeek = selectWeeklyWeek;
+window.doDeleteWeeklySchedule = doDeleteWeeklySchedule;
 window.renderCourseList = renderCourseList;
 window.doImport = doImport;
 window.addSingle = addSingle;
