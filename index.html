@@ -197,7 +197,6 @@ function courseList() {
   return Object.values(courses || {});
 }
 
-// 智能解構時間字符串以利精準排序 (解決 8:30 與 16:00 錯亂問題)
 function parseTimeToMinutes(timeStr) {
   const clean = (timeStr || '').trim();
   const match = clean.match(/^(\d+):(\d+)/);
@@ -205,7 +204,6 @@ function parseTimeToMinutes(timeStr) {
   return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
 }
 
-// 綜合時間排序核心
 function sortCoursesByTime(a, b) {
   return parseTimeToMinutes(a.time) - parseTimeToMinutes(b.time);
 }
@@ -314,7 +312,6 @@ function renderTodayContent() {
   });
   pickerHtml += '</div>';
 
-  // 修正排序：使用智慧時間由早到晚整齊排序
   const list = courseList().filter(c => c.date === selectedDate).sort(sortCoursesByTime);
   const isToday = selectedDate === today;
   const label = isToday ? 'Today' : fmtDate(selectedDate);
@@ -447,7 +444,6 @@ function renderTeacherCourses() {
   if (!teacher) { el.innerHTML = `<p style="color:#999;font-size:14px">請先選擇老師姓名以開始填寫班級教案。</p>`; return; }
   
   const today = todayISO();
-  // 修正排序：老師個人名下的多個班級，同樣由早到晚智慧時間排序
   const mine = courseList()
     .filter(c => c.date >= today && (c.teacher && c.teacher.toLowerCase() === teacher.toLowerCase()))
     .sort(sortCoursesByTime);
@@ -542,30 +538,6 @@ async function uploadImage(file) {
   throw new Error('Upload failed');
 }
 
-// Event delegation for image upload
-document.addEventListener('change', async function(e) {
-  if (!e.target.classList.contains('ecc-img-input')) return;
-  const id = e.target.dataset.cid;
-  const file = e.target.files[0];
-  if (!file) return;
-  const status = document.getElementById('img-status-' + id);
-  if (status) { status.textContent = '上傳中...'; status.style.color = '#888'; }
-  try {
-    const url = await uploadImage(file);
-    const course = courses[id];
-    if (!course) return;
-    if (!course.imageUrls) course.imageUrls = [];
-    course.imageUrls.push(url);
-    course.updatedAt = new Date().toISOString();
-    await saveCourse(id, course);
-    renderImageList(id, course.imageUrls);
-    if (status) { status.textContent = '✓ 上傳成功'; status.style.color = '#1E7E34'; setTimeout(() => { if(status) status.textContent = ''; }, 2000); }
-    e.target.value = '';
-  } catch(err) {
-    if (status) { status.textContent = '上傳失敗，請重試'; status.style.color = '#C62828'; }
-  }
-});
-
 // ── 4. ADMIN VIEW (行政管理 - 批量輸入與控管) ────────────────────────────────────
 function renderAdmin() {
   if (!adminAuth) {
@@ -599,9 +571,9 @@ function renderAdminContent() {
       <p class="sub">從 Excel 複製貼上，每行一堂課（Tab 分隔）：日期 → 班級 → 時間 → 教室 → 英語老師</p>
       <div class="mono">範例：<br>7/13&nbsp;&nbsp;&nbsp;&nbsp;OLG+OLH&nbsp;&nbsp;&nbsp;&nbsp;9:30~10:20(50m)&nbsp;&nbsp;&nbsp;&nbsp;2A(ZX)&nbsp;&nbsp;&nbsp;&nbsp;Cynthia<br>7/15&nbsp;&nbsp;&nbsp;&nbsp;PPC&nbsp;&nbsp;&nbsp;&nbsp;9:30~10:20(50m)&nbsp;&nbsp;&nbsp;&nbsp;F-B&nbsp;&nbsp;&nbsp;&nbsp;Sherry</div>
       <textarea id="paste-area" rows="6" placeholder="從 Excel 貼上課表..." style="margin-bottom:8px;font-size:13px"></textarea>
-      <textarea-button class="primary" onclick="doImport()">
+      <button class="primary" onclick="doImport()">
         <i class="ti ti-upload" style="font-size:14px;margin-right:4px"></i>匯入
-      </textarea-button>
+      </button>
       <p id="import-msg" style="font-size:13px;color:#1E7E34;margin-top:8px"></p>
     </section>
 
