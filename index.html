@@ -79,12 +79,6 @@
   .empty-state .icon{font-size:40px;margin-bottom:12px}
   .empty-state p{font-size:14px}
 
-  /* Password gate */
-  .pw-gate{max-width:320px;margin:48px auto;text-align:center}
-  .pw-gate .lock-icon{font-size:36px;color:#BBB;margin-bottom:12px}
-  .pw-gate p{font-size:14px;color:#777;margin-bottom:16px}
-  .pw-gate .pw-error{font-size:12px;color:#C62828;margin-top:6px}
-
   /* Teacher view */
   .save-indicator{font-size:11px;color:#1E7E34;margin-left:8px}
   .img-upload-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border:1px dashed #CCC;border-radius:8px;background:#FAFAFA;font-size:13px;cursor:pointer;color:#555;margin-top:8px;transition:all .15s}
@@ -164,8 +158,7 @@ const db = getDatabase(app);
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const IMGBB_KEY = 'bf4527c3aa6bd9f9d777c72d26268251';
 let courses = {};
-let settings = { vpw: 'ECC2026', apw: 'Abigail', weeklyScheduleUrl: '' }; 
-let viewAuth = true, adminAuth = false;
+let settings = { weeklyScheduleUrl: '' }; 
 let selectedDate = todayISO();
 let activeTab = 'today';
 
@@ -256,9 +249,9 @@ function switchTab(name, btn) {
 }
 
 function rerenderActive() {
-  if (activeTab === 'today' && viewAuth) renderTodayContent();
+  if (activeTab === 'today') renderTodayContent();
   if (activeTab === 'teacher') renderTeacherCourses();
-  if (activeTab === 'admin' && adminAuth) renderAdminContent();
+  if (activeTab === 'admin') renderAdminContent();
 }
 
 // ── 1. TODAY VIEW (今日課表 - 外師專用) ──────────────────────────────────────────
@@ -373,21 +366,21 @@ function selectDay(iso) {
   renderTodayContent();
 }
 
-// ── 2. WEEKLY VIEW (當週課表 - 圖檔看板展示) ──────────────────────────────────
+// ── 2. WEEKLY VIEW (當週課表 - 免密碼上傳圖檔) ──────────────────────────────────
 function renderWeekly() {
   let imgHtml = settings.weeklyScheduleUrl 
     ? `<img src="${esc(settings.weeklyScheduleUrl)}" style="width:100%; border-radius:12px; border:1px solid #E8E8E8; display:block; margin-top:12px;">` 
     : `<div class="empty-state" style="background:#fff; border-radius:12px; border:1px solid #E8E8E8;"><div class="icon">🖼️</div><p>目前尚未上傳本週課表圖檔</p></div>`;
 
-  let uploadSection = adminAuth ? `
+  let uploadSection = `
     <div class="card" style="margin-top: 16px; border-style: dashed;">
-      <h3 style="font-size:14px; margin-bottom:6px;">更新當週課表圖檔 (管理者權限)</h3>
+      <h3 style="font-size:14px; margin-bottom:6px;">更新當週課表圖檔 (免密碼直接上傳)</h3>
       <label class="img-upload-btn" style="display:inline-flex; cursor:pointer; margin-top:0;">
         <input type="file" accept="image/*" id="schedule-img-input" style="position:absolute; opacity:0; width:1px; height:1px; overflow:hidden">
         <i class="ti ti-photo-up" style="font-size:15px"></i>&nbsp;上傳最新課表圖檔
       </label>
       <span id="schedule-upload-status" style="font-size:12px; margin-left:10px; color:#888;"></span>
-    </div>` : '';
+    </div>`;
 
   document.getElementById('tab-weekly').innerHTML = `
     <div class="today-header" style="margin-bottom: 8px;">
@@ -399,23 +392,21 @@ function renderWeekly() {
     ${imgHtml}
     ${uploadSection}`;
 
-  if (adminAuth) {
-    document.getElementById('schedule-img-input')?.addEventListener('change', async function(e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      const status = document.getElementById('schedule-upload-status');
-      if (status) status.textContent = '圖檔上傳中...';
-      try {
-        const url = await uploadImage(file);
-        settings.weeklyScheduleUrl = url;
-        await saveSettings(settings);
-        if (status) status.textContent = '✓ 課表圖檔更新成功！';
-        renderWeekly();
-      } catch(err) {
-        if (status) status.textContent = '上傳失敗，請重試';
-      }
-    });
-  }
+  document.getElementById('schedule-img-input')?.addEventListener('change', async function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const status = document.getElementById('schedule-upload-status');
+    if (status) status.textContent = '圖檔上傳中...';
+    try {
+      const url = await uploadImage(file);
+      settings.weeklyScheduleUrl = url;
+      await saveSettings(settings);
+      if (status) status.textContent = '✓ 課表圖檔更新成功！';
+      renderWeekly();
+    } catch(err) {
+      if (status) status.textContent = '上傳失敗，請重試';
+    }
+  });
 }
 
 // ── 3. TEACHER VIEW (老師填寫 - 下拉選單填寫教案) ───────────────────────────────
@@ -538,30 +529,53 @@ async function uploadImage(file) {
   throw new Error('Upload failed');
 }
 
-// ── 4. ADMIN VIEW (行政管理 - 批量輸入與控管) ────────────────────────────────────
-function renderAdmin() {
-  if (!adminAuth) {
-    document.getElementById('tab-admin').innerHTML = `
-      <div class="pw-gate">
-        <div class="lock-icon">🔒</div>
-        <p>行政管理 — 請輸入管理員密碼</p>
-        <input type="password" id="apw-in" placeholder="Password" onkeydown="if(event.key==='Enter')tryAdminLogin()">
-        <div id="apw-err" class="pw-error" style="display:none">密碼錯誤，請再試</div>
-        <button class="primary" onclick="tryAdminLogin()" style="width:100%;margin-top:10px">確認</button>
-      </div>`;
-    return;
+// Event delegation for image upload
+document.addEventListener('change', async function(e) {
+  if (!e.target.classList.contains('ecc-img-input')) return;
+  const id = e.target.dataset.cid;
+  const file = e.target.files[0];
+  if (!file) return;
+  const status = document.getElementById('img-status-' + id);
+  if (status) { status.textContent = '上傳中...'; status.style.color = '#888'; }
+  try {
+    const url = await uploadImage(file);
+    const course = courses[id];
+    if (!course) return;
+    if (!course.imageUrls) course.imageUrls = [];
+    course.imageUrls.push(url);
+    course.updatedAt = new Date().toISOString();
+    await saveCourse(id, course);
+    renderImageList(id, course.imageUrls);
+    if (status) { status.textContent = '✓ 上傳成功'; status.style.color = '#1E7E34'; setTimeout(() => { if(status) status.textContent = ''; }, 2000); }
+    e.target.value = '';
+  } catch(err) {
+    if (status) { status.textContent = '上傳失敗，請重試'; status.style.color = '#C62828'; }
   }
-  renderAdminContent();
+});
+
+function renderImageList(id, urls) {
+  const container = document.getElementById('img-list-' + id);
+  if (!container) return;
+  if (!urls || !urls.length) { container.innerHTML = ''; return; }
+  container.innerHTML = urls.map((url, i) => `
+    <div style="position:relative;display:inline-block;margin:4px 6px 4px 0">
+      <img src="${url}" style="width:120px;height:80px;object-fit:cover;border-radius:6px;border:1px solid #EEE;display:block">
+      <button onclick="deleteImage('${id}',${i})" style="position:absolute;top:2px;right:2px;padding:2px 5px;font-size:10px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:4px;cursor:pointer">✕</button>
+    </div>`).join('');
 }
 
-function tryAdminLogin() {
-  const v = document.getElementById('apw-in').value;
-  if (v === settings.apw) { 
-    adminAuth = true; 
-    renderAdminContent();
-    if (activeTab === 'weekly') renderWeekly(); 
-  }
-  else document.getElementById('apw-err').style.display = 'block';
+async function deleteImage(id, index) {
+  const course = courses[id];
+  if (!course || !course.imageUrls) return;
+  course.imageUrls.splice(index, 1);
+  course.updatedAt = new Date().toISOString();
+  await saveCourse(id, course);
+  renderImageList(id, course.imageUrls);
+}
+
+// ── 4. ADMIN VIEW (行政管理 - 全面免密碼，登入直達) ───────────────────────────────────
+function renderAdmin() {
+  renderAdminContent();
 }
 
 function renderAdminContent() {
@@ -603,28 +617,6 @@ function renderAdminContent() {
         </div>
       </div>
       <div id="course-list"></div>
-    </section>
-
-    <div class="divider"></div>
-
-    <section>
-      <h3>密碼設定</h3>
-      <div class="grid2" style="margin-top:8px">
-        <div>
-          <label>外師查看密碼</label>
-          <div class="row">
-            <input type="text" id="new-vpw" placeholder="${esc(settings.vpw)}">
-            <button onclick="updatePw('vpw')">更新</button>
-          </div>
-        </div>
-        <div>
-          <label>管理員密碼</label>
-          <div class="row">
-            <input type="text" id="new-apw" placeholder="${esc(settings.apw)}">
-            <button onclick="updatePw('apw')">更新</button>
-          </div>
-        </div>
-      </div>
     </section>`;
   renderCourseList();
 }
@@ -728,27 +720,16 @@ async function clearAllCourses() {
   alert('✓ 資料庫已全面重設，所有課程已清空。');
 }
 
-async function updatePw(key) {
-  const val = document.getElementById('new-' + key).value.trim();
-  if (!val) return;
-  const newSettings = { ...settings, [key]: val };
-  await saveSettings(newSettings);
-  document.getElementById('new-' + key).value = '';
-  alert(`密碼已更新`);
-}
-
 // ── Expose to Global Window Scope ───────────────────────────────────────────
 window.switchTab = switchTab;
 window.selectDay = selectDay;
 window.renderTeacherCourses = renderTeacherCourses;
 window.saveField = saveField;
 window.deleteImage = deleteImage;
-window.tryAdminLogin = tryAdminLogin;
 window.renderCourseList = renderCourseList;
 window.doImport = doImport;
 window.addSingle = addSingle;
 window.doDelete = doDelete;
-window.updatePw = updatePw;
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 setTimeout(() => {
