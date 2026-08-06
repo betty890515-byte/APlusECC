@@ -6,7 +6,7 @@
 <title>ECC 外師教案系統 — 耶加語言學校</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F7F8FA;color:#1A6FA8;font-size:15px}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F7F8FA;color:#1A1A1A;font-size:15px}
   a{color:#1A6FA8;text-decoration:none}
   a:hover{text-decoration:underline}
 
@@ -111,16 +111,16 @@
       <span class="app-title">ECC 外師教案系統</span>
     </div>
     <div class="tabbar">
-      <button id="tab-btn-today" class="tab active" onclick="switchTab('today',this)">
+      <button id="tab-btn-today" class="tab active" data-tab="today">
         <i class="ti ti-calendar"></i>今日課表
       </button>
-      <button id="tab-btn-weekly" class="tab" onclick="switchTab('weekly',this)">
+      <button id="tab-btn-weekly" class="tab" data-tab="weekly">
         <i class="ti ti-photo"></i>當週課表
       </button>
-      <button id="tab-btn-teacher" class="tab" onclick="switchTab('teacher',this)">
+      <button id="tab-btn-teacher" class="tab" data-tab="teacher">
         <i class="ti ti-edit"></i>老師填寫
       </button>
-      <button id="tab-btn-admin" class="tab" onclick="switchTab('admin',this)">
+      <button id="tab-btn-admin" class="tab" data-tab="admin">
         <i class="ti ti-settings"></i>行政管理
       </button>
     </div>
@@ -135,6 +135,7 @@
   </div>
 </div>
 
+<!-- Firebase Script -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
@@ -199,7 +200,7 @@ function sortCoursesByTime(a, b) {
   return parseTimeToMinutes(a.time) - parseTimeToMinutes(b.time);
 }
 
-// ── Real-time Listeners ───────────────────────────────────────────────────────
+// ── Firebase 即時監聽 ────────────────────────────────────────────────────────
 onValue(ref(db, 'courses'), snap => {
   courses = snap.val() || {};
   rerenderActive();
@@ -223,14 +224,11 @@ async function saveSettings(data) {
   settings = data;
 }
 
-// ── Tab Switching ─────────────────────────────────────────────────────────────
-window.switchTab = function(name, btn) {
-  document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
-  if (btn) {
-    btn.classList.add('active');
-  } else {
-    document.getElementById('tab-btn-' + name)?.classList.add('active');
-  }
+// ── 頁籤切換 ─────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === name);
+  });
   
   ['today', 'weekly', 'teacher', 'admin'].forEach(t => {
     const el = document.getElementById('tab-' + t);
@@ -243,13 +241,22 @@ window.switchTab = function(name, btn) {
   if (name === 'weekly') renderWeekly();
   if (name === 'teacher') renderTeacher();
   if (name === 'admin') renderAdmin();
-};
+}
 
 function rerenderActive() {
   if (activeTab === 'today') renderTodayContent();
   if (activeTab === 'teacher') renderTeacherCourses();
   if (activeTab === 'admin') renderAdminContent();
 }
+
+// 全域事件監聽，防止按鈕點擊失靈
+document.addEventListener('click', function(e) {
+  const tabBtn = e.target.closest('.tab');
+  if (tabBtn) {
+    e.preventDefault();
+    switchTab(tabBtn.dataset.tab);
+  }
+});
 
 // ── 1. TODAY VIEW ─────────────────────────────────────────────────────────────
 function renderToday() {
