@@ -624,7 +624,7 @@ async function deleteImage(id, index) {
   renderImageList(id, course.imageUrls);
 }
 
-// ── 4. ADMIN VIEW (強效匯入相容版) ────────────────────────────────────────────
+// ── 4. ADMIN VIEW ─────────────────────────────────────────────────────────────
 function renderAdmin() {
   renderAdminContent();
 }
@@ -707,7 +707,6 @@ async function doImport() {
   let added = 0, skipped = 0;
 
   for (const line of lines) {
-    // 支援 Tab 或 2 個以上空格做分隔
     let parts = line.split('\t');
     if (parts.length < 2) {
       parts = line.split(/\s{2,}/);
