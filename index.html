@@ -52,7 +52,7 @@
   /* Divider */
   .divider{border-top:1px solid #EEE;margin:20px 0}
 
-  /* Today & Weekly Picker */
+  /* Today View */
   .today-header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:16px}
   .today-date-label{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
   .today-date{font-size:26px;font-weight:600}
@@ -140,7 +140,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, set, get, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-// ── Firebase config ──────────────────────────────────────────────────────────
 const firebaseConfig = {
   apiKey: "AIzaSyBc14tI-IAmSGRUkBIvuO9Cze8mQFare7M",
   authDomain: "aplusecc.firebaseapp.com",
@@ -154,11 +153,10 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const IMGBB_KEY = 'bf4527c3aa6bd9f9d777c72d26268251';
 let courses = {};
-let settings = { weeklyScheduleUrl: '' }; // 改回單一圖檔結構
+let settings = { weeklyScheduleUrl: '' };
 let selectedDate = todayISO();
 let activeTab = 'today';
 
@@ -201,7 +199,18 @@ function sortCoursesByTime(a, b) {
   return parseTimeToMinutes(a.time) - parseTimeToMinutes(b.time);
 }
 
-// ── Firebase read/write ───────────────────────────────────────────────────────
+// ── Real-time Listeners ───────────────────────────────────────────────────────
+onValue(ref(db, 'courses'), snap => {
+  courses = snap.val() || {};
+  rerenderActive();
+});
+onValue(ref(db, 'settings'), snap => {
+  if (snap.val()) {
+    settings = { ...settings, ...snap.val() };
+    if (activeTab === 'weekly') renderWeekly();
+  }
+});
+
 async function saveCourse(id, data) {
   await set(ref(db, `courses/${id}`), data);
 }
@@ -214,19 +223,7 @@ async function saveSettings(data) {
   settings = data;
 }
 
-// Listen for real-time updates
-onValue(ref(db, 'courses'), snap => {
-  courses = snap.val() || {};
-  rerenderActive();
-});
-onValue(ref(db, 'settings'), snap => {
-  if (snap.val()) {
-    settings = { ...settings, ...snap.val() };
-    if (activeTab === 'weekly') renderWeekly();
-  }
-});
-
-// ── Tab switching ─────────────────────────────────────────────────────────────
+// ── Tab Management ────────────────────────────────────────────────────────────
 function switchTab(name, btn) {
   document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
   if (btn) {
@@ -254,7 +251,7 @@ function rerenderActive() {
   if (activeTab === 'admin') renderAdminContent();
 }
 
-// ── 1. TODAY VIEW (今日課表) ──────────────────────────────────────────────────
+// ── 1. TODAY VIEW ─────────────────────────────────────────────────────────────
 function renderToday() {
   renderTodayContent();
 }
@@ -366,7 +363,7 @@ function selectDay(iso) {
   renderTodayContent();
 }
 
-// ── 2. WEEKLY VIEW (當週課表 - 改回100%保證顯示的單張大圖) ──────────────────────
+// ── 2. WEEKLY VIEW ────────────────────────────────────────────────────────────
 function renderWeekly() {
   let imgHtml = settings.weeklyScheduleUrl 
     ? `<img src="${esc(settings.weeklyScheduleUrl)}" style="width:100%; border-radius:12px; border:1px solid #E8E8E8; display:block; margin-top:12px;">` 
@@ -457,7 +454,7 @@ function initWeeklyUploadListener() {
   };
 }
 
-// ── 3. TEACHER VIEW (老師填寫) ───────────────────────────────────────────────
+// ── 3. TEACHER VIEW ───────────────────────────────────────────────────────────
 function renderTeacher() {
   const teachers = [...new Set(courseList().map(c => c.teacher).filter(Boolean))].sort();
   const opts = teachers.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
@@ -627,7 +624,7 @@ async function deleteImage(id, index) {
   renderImageList(id, course.imageUrls);
 }
 
-// ── 4. ADMIN VIEW (行政管理) ──────────────────────────────────────────────────
+// ── 4. ADMIN VIEW (強效匯入相容版) ────────────────────────────────────────────
 function renderAdmin() {
   renderAdminContent();
 }
@@ -636,13 +633,13 @@ function renderAdminContent() {
   document.getElementById('tab-admin').innerHTML = `
     <section>
       <h3>批量匯入課表</h3>
-      <p class="sub">從 Excel 複製貼上，每行一堂課（Tab 分隔）：日期 → 班級 → 時間 → 教室 → 英語老師</p>
-      <div class="mono">範例：<br>7/13&nbsp;&nbsp;&nbsp;&nbsp;OLG+OLH&nbsp;&nbsp;&nbsp;&nbsp;9:30~10:20(50m)&nbsp;&nbsp;&nbsp;&nbsp;2A(ZX)&nbsp;&nbsp;&nbsp;&nbsp;Cynthia<br>7/15&nbsp;&nbsp;&nbsp;&nbsp;PPC&nbsp;&nbsp;&nbsp;&nbsp;9:30~10:20(50m)&nbsp;&nbsp;&nbsp;&nbsp;F-B&nbsp;&nbsp;&nbsp;&nbsp;Sherry</div>
+      <p class="sub">從 Excel 複製貼上，每行一堂課（Tab 或 多個空白 分隔）：日期 → 班級 → 時間 → 教室 → 英語老師</p>
+      <div class="mono">範例：<br>7/20&nbsp;&nbsp;&nbsp;&nbsp;OAD+OAE&nbsp;&nbsp;&nbsp;&nbsp;8:30~9:20(50m)&nbsp;&nbsp;&nbsp;&nbsp;1B(LH-2)&nbsp;&nbsp;&nbsp;&nbsp;Hank<br>7/20&nbsp;&nbsp;&nbsp;&nbsp;OPF&nbsp;&nbsp;&nbsp;&nbsp;9:30~10:20(50m)&nbsp;&nbsp;&nbsp;&nbsp;6B(LH-2)&nbsp;&nbsp;&nbsp;&nbsp;Kevin</div>
       <textarea id="paste-area" rows="6" placeholder="從 Excel 貼上課表..." style="margin-bottom:8px;font-size:13px"></textarea>
       <button class="primary" onclick="doImport()">
-        <i class="ti ti-upload" style="font-size:14px;margin-right:4px"></i>匯入
+        <i class="ti ti-upload" style="font-size:14px;margin-right:4px"></i>匯入課表
       </button>
-      <p id="import-msg" style="font-size:13px;color:#1E7E34;margin-top:8px"></p>
+      <p id="import-msg" style="font-size:13px;color:#1E7E34;margin-top:8px;font-weight:600;"></p>
     </section>
 
     <div class="divider"></div>
@@ -650,13 +647,13 @@ function renderAdminContent() {
     <section>
       <h3>手動新增單堂課</h3>
       <div class="grid2" style="margin-bottom:8px">
-        <input type="text" id="a-date" placeholder="日期（7/13）">
+        <input type="text" id="a-date" placeholder="日期（例如 7/20）">
         <input type="text" id="a-class" placeholder="班級">
         <input type="text" id="a-time" placeholder="時間">
         <input type="text" id="a-room" placeholder="教室">
         <input type="text" id="a-teacher" placeholder="英語老師">
       </div>
-      <button onclick="addSingle()">新增</button>
+      <button onclick="addSingle()">新增單堂課</button>
     </section>
 
     <div class="divider"></div>
@@ -684,7 +681,7 @@ function renderCourseList() {
   const cnt = document.getElementById('course-count');
   if (cnt) cnt.textContent = `(${courseList().length})`;
   if (!el) return;
-  if (!list.length) { el.innerHTML = `<p style="color:#999;font-size:14px;text-align:center;padding:16px">找不到課程</p>`; return; }
+  if (!list.length) { el.innerHTML = `<p style="color:#999;font-size:14px;text-align:center;padding:16px">目前無課程資料</p>`; return; }
   el.innerHTML = list.map(c => `
     <div class="card card-sm course-row">
       <div class="course-row-info">
@@ -699,14 +696,29 @@ function renderCourseList() {
 }
 
 async function doImport() {
-  const lines = document.getElementById('paste-area').value.trim().split('\n').filter(Boolean);
+  const txt = document.getElementById('paste-area').value.trim();
+  const msg = document.getElementById('import-msg');
+  if (!txt) {
+    if (msg) { msg.textContent = '❌ 請先將課表文字貼入上方框框中！'; msg.style.color = '#C62828'; }
+    return;
+  }
+
+  const lines = txt.split('\n').filter(Boolean);
   let added = 0, skipped = 0;
+
   for (const line of lines) {
-    const parts = line.split('\t').map(s => s.trim());
+    // 支援 Tab 或 2 個以上空格做分隔
+    let parts = line.split('\t');
+    if (parts.length < 2) {
+      parts = line.split(/\s{2,}/);
+    }
+    parts = parts.map(s => s.trim());
+
     const [rawDate, className, time, classroom, teacher = ''] = [...parts, ...Array(5).fill('')];
     const date = toISO(rawDate);
+    
     if (!date || !className) { skipped++; continue; }
-    if (courseList().find(c => c.date === date && c.className === className)) { skipped++; continue; }
+    
     const id = uid();
     const course = { 
       id, date, className, 
@@ -720,7 +732,11 @@ async function doImport() {
     await saveCourse(id, course);
     added++;
   }
-  document.getElementById('import-msg').textContent = `✓ ${added} 堂課匯入成功，${skipped} 筆略過（重複或格式錯誤）`;
+
+  if (msg) {
+    msg.style.color = '#1E7E34';
+    msg.textContent = `✓ 成功匯入 ${added} 堂課！${skipped ? `(${skipped} 筆格式不符已忽略)` : ''}`;
+  }
   document.getElementById('paste-area').value = '';
 }
 
@@ -728,7 +744,6 @@ async function addSingle() {
   const date = toISO(document.getElementById('a-date').value);
   const className = document.getElementById('a-class').value.trim();
   if (!date || !className) return;
-  if (courseList().find(c => c.date === date && c.className === className)) return;
   const id = uid();
   await saveCourse(id, {
     id, date, className,
@@ -755,7 +770,7 @@ async function deleteHistoryCourses() {
     alert('目前沒有比今天更早的歷史舊課程需要刪除。');
     return;
   }
-  if (!confirm(`確定要一鍵刪除這 ${historyList.length} 堂歷史舊課嗎？\n(這項操作無法復原)`)) return;
+  if (!confirm(`確定要一鍵刪除這 ${historyList.length} 堂歷史舊課嗎？`)) return;
   for (const c of historyList) {
     await set(ref(db, `courses/${c.id}`), null);
   }
@@ -768,8 +783,7 @@ async function clearAllCourses() {
     alert('目前資料庫內沒有任何課程紀錄。');
     return;
   }
-  if (!confirm(`⚠️ 警報：這會直接「完全清空」資料庫裡所有的課程紀錄 (${total} 堂課)！\n你確定要繼續嗎？`)) return;
-  if (!confirm('最後一次確認：你真的要清空嗎？所有外師辛苦填寫的教案截圖與紀錄都將徹底消失！')) return;
+  if (!confirm(`⚠️ 警報：這會完全清空資料庫裡所有的課程紀錄 (${total} 堂課)！確定要繼續嗎？`)) return;
   await set(ref(db, 'courses'), null);
   alert('✓ 資料庫已全面重設，所有課程已清空。');
 }
@@ -784,6 +798,8 @@ window.renderCourseList = renderCourseList;
 window.doImport = doImport;
 window.addSingle = addSingle;
 window.doDelete = doDelete;
+window.deleteHistoryCourses = deleteHistoryCourses;
+window.clearAllCourses = clearAllCourses;
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 setTimeout(() => {
