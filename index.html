@@ -111,16 +111,16 @@
       <span class="app-title">ECC 外師教案系統</span>
     </div>
     <div class="tabbar">
-      <button id="tab-btn-today" class="tab active" onclick="switchTab('today',this)">
+      <button id="tab-btn-today" class="tab active" data-tab="today">
         <i class="ti ti-calendar"></i>今日課表
       </button>
-      <button id="tab-btn-weekly" class="tab" onclick="switchTab('weekly',this)">
+      <button id="tab-btn-weekly" class="tab" data-tab="weekly">
         <i class="ti ti-photo"></i>當週課表
       </button>
-      <button id="tab-btn-teacher" class="tab" onclick="switchTab('teacher',this)">
+      <button id="tab-btn-teacher" class="tab" data-tab="teacher">
         <i class="ti ti-edit"></i>老師填寫
       </button>
-      <button id="tab-btn-admin" class="tab" onclick="switchTab('admin',this)">
+      <button id="tab-btn-admin" class="tab" data-tab="admin">
         <i class="ti ti-settings"></i>行政管理
       </button>
     </div>
@@ -135,10 +135,10 @@
   </div>
 </div>
 
-<!-- Firebase -->
+<!-- Firebase Script -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, get, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBc14tI-IAmSGRUkBIvuO9Cze8mQFare7M",
@@ -150,6 +150,7 @@ const firebaseConfig = {
   appId: "1:1098832467671:web:958f9db44977b6e4904292",
   measurementId: "G-HBGHH7K7MF"
 };
+
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
@@ -199,7 +200,7 @@ function sortCoursesByTime(a, b) {
   return parseTimeToMinutes(a.time) - parseTimeToMinutes(b.time);
 }
 
-// ── Real-time Listeners ───────────────────────────────────────────────────────
+// ── Firebase 即時監聽 ────────────────────────────────────────────────────────
 onValue(ref(db, 'courses'), snap => {
   courses = snap.val() || {};
   rerenderActive();
@@ -223,14 +224,11 @@ async function saveSettings(data) {
   settings = data;
 }
 
-// ── Tab Management ────────────────────────────────────────────────────────────
-function switchTab(name, btn) {
-  document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
-  if (btn) {
-    btn.classList.add('active');
-  } else {
-    document.getElementById('tab-btn-' + name)?.classList.add('active');
-  }
+// ── 頁籤切換 ─────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === name);
+  });
   
   ['today', 'weekly', 'teacher', 'admin'].forEach(t => {
     const el = document.getElementById('tab-' + t);
@@ -250,6 +248,15 @@ function rerenderActive() {
   if (activeTab === 'teacher') renderTeacherCourses();
   if (activeTab === 'admin') renderAdminContent();
 }
+
+// 全域事件監聽，防止按鈕點擊失靈
+document.addEventListener('click', function(e) {
+  const tabBtn = e.target.closest('.tab');
+  if (tabBtn) {
+    e.preventDefault();
+    switchTab(tabBtn.dataset.tab);
+  }
+});
 
 // ── 1. TODAY VIEW ─────────────────────────────────────────────────────────────
 function renderToday() {
@@ -298,7 +305,7 @@ function renderTodayContent() {
     const isToday = d.iso === today;
     const isActive = d.iso === selectedDate;
     const cls = ['day-btn', isToday ? 'is-today' : '', isActive ? 'active' : ''].filter(Boolean).join(' ');
-    pickerHtml += `<button class="${cls}" onclick="selectDay('${d.iso}')"><span class="dn">${d.dayName}</span><span class="dd">${d.dayNum}</span></button>`;
+    pickerHtml += `<button class="${cls}" onclick="window.selectDay('${d.iso}')"><span class="dn">${d.dayName}</span><span class="dd">${d.dayNum}</span></button>`;
   });
   pickerHtml += '</div>';
 
@@ -358,10 +365,10 @@ function renderTodayContent() {
   document.getElementById('tab-today').innerHTML = html;
 }
 
-function selectDay(iso) {
+window.selectDay = function(iso) {
   selectedDate = iso;
   renderTodayContent();
-}
+};
 
 // ── 2. WEEKLY VIEW ────────────────────────────────────────────────────────────
 function renderWeekly() {
@@ -372,7 +379,7 @@ function renderWeekly() {
   let uploadSection = `
     <div class="card" style="margin-top: 24px; border-style: dashed;">
       <h3 style="font-size:14px; margin-bottom:8px;">上傳 / 更新當週課表圖檔</h3>
-      <button type="button" class="primary" onclick="triggerScheduleUpload()" style="width:100%; padding:12px; font-size:14px; display:flex; align-items:center; justify-content:center; gap:8px;">
+      <button type="button" class="primary" onclick="window.triggerScheduleUpload()" style="width:100%; padding:12px; font-size:14px; display:flex; align-items:center; justify-content:center; gap:8px;">
         <i class="ti ti-photo-up" style="font-size:18px"></i>選擇手機照片 / 電腦課表圖檔上傳
       </button>
       <input type="file" accept="image/*" id="schedule-img-input" style="display:none;">
@@ -462,7 +469,7 @@ function renderTeacher() {
   document.getElementById('tab-teacher').innerHTML = `
     <div style="margin-bottom:20px">
       <label style="margin-top:0">英語導師姓名 (C.T. Name)</label>
-      <select id="teacher-select" onchange="renderTeacherCourses()" style="max-width:280px">
+      <select id="teacher-select" onchange="window.renderTeacherCourses()" style="max-width:280px">
         <option value="">── 請選擇你的名字 ──</option>
         ${opts}
       </select>
@@ -472,7 +479,7 @@ function renderTeacher() {
   renderTeacherCourses();
 }
 
-function renderTeacherCourses() {
+window.renderTeacherCourses = function() {
   const sel = document.getElementById('teacher-select');
   const teacher = sel ? sel.value : '';
   const el = document.getElementById('teacher-courses');
@@ -507,27 +514,27 @@ function renderTeacherCourses() {
         </div>
         <div>
           <label style="margin-top:0;">2. 使用教材課本 (Textbook)</label>
-          <input type="text" value="${esc(c.textbook||'')}" placeholder="e.g. Side by Side 1" onblur="saveField('${c.id}','textbook',this.value)">
+          <input type="text" value="${esc(c.textbook||'')}" placeholder="e.g. Side by Side 1" onblur="window.saveField('${c.id}','textbook',this.value)">
         </div>
       </div>
 
       <label>3. 今日課程進度 (Today's Lesson)</label>
-      <textarea id="tl-${c.id}" rows="2" placeholder="e.g. Ch2 p.14-16 — Vocabulary practice" onblur="saveField('${c.id}','lesson',this.value)">${esc(c.lesson||'')}</textarea>
+      <textarea id="tl-${c.id}" rows="2" placeholder="e.g. Ch2 p.14-16 — Vocabulary practice" onblur="window.saveField('${c.id}','lesson',this.value)">${esc(c.lesson||'')}</textarea>
 
       <div class="grid2">
         <div>
           <label>線上教材連結 (Google Drive)</label>
-          <input type="text" id="tm-${c.id}" value="${esc(c.materialLink||'')}" placeholder="https://drive.google.com/..." onblur="saveField('${c.id}','materialLink',this.value)">
+          <input type="text" id="tm-${c.id}" value="${esc(c.materialLink||'')}" placeholder="https://drive.google.com/..." onblur="window.saveField('${c.id}','materialLink',this.value)">
         </div>
         <div>
           <label>頁數備註</label>
-          <input type="text" id="tp-${c.id}" value="${esc(c.materialPage||'')}" placeholder="41–42" onblur="saveField('${c.id}','materialPage',this.value)">
+          <input type="text" id="tp-${c.id}" value="${esc(c.materialPage||'')}" placeholder="41–42" onblur="window.saveField('${c.id}','materialPage',this.value)">
         </div>
       </div>
       <div style="margin-top:4px">
         <label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:4px">教材截圖（可上傳多張）</label>
         
-        <button type="button" class="img-upload-btn" onclick="triggerScreenshotUpload('${c.id}')" style="width:auto; min-width:120px; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
+        <button type="button" class="img-upload-btn" onclick="window.triggerScreenshotUpload('${c.id}')" style="width:auto; min-width:120px; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
           <i class="ti ti-photo-up" style="font-size:15px"></i>上傳截圖
         </button>
         <input type="file" accept="image/*" class="ecc-img-input" id="screenshot-input-${c.id}" data-cid="${c.id}" style="display:none;">
@@ -542,13 +549,13 @@ function renderTeacherCourses() {
     const urls = c.imageUrls || (c.imageUrl ? [c.imageUrl] : []);
     renderImageList(c.id, urls);
   });
-}
+};
 
 window.triggerScreenshotUpload = function(cid) {
   document.getElementById(`screenshot-input-${cid}`).click();
 };
 
-async function saveField(id, field, val) {
+window.saveField = async function(id, field, val) {
   const course = courses[id];
   if (!course) return;
   course[field] = val;
@@ -562,7 +569,7 @@ async function saveField(id, field, val) {
     tb.className = `badge ${lesson ? 'badge-green' : 'badge-orange'}`;
     tb.textContent = lesson ? '完成' : '待填';
   }
-}
+};
 
 async function uploadImage(file) {
   const base64 = await new Promise((resolve, reject) => {
@@ -611,18 +618,18 @@ function renderImageList(id, urls) {
   container.innerHTML = urls.map((url, i) => `
     <div style="position:relative;display:inline-block;margin:4px 6px 4px 0">
       <img src="${url}" style="width:120px;height:80px;object-fit:cover;border-radius:6px;border:1px solid #EEE;display:block">
-      <button onclick="deleteImage('${id}',${i})" style="position:absolute;top:2px;right:2px;padding:2px 5px;font-size:10px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:4px;cursor:pointer">✕</button>
+      <button onclick="window.deleteImage('${id}',${i})" style="position:absolute;top:2px;right:2px;padding:2px 5px;font-size:10px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:4px;cursor:pointer">✕</button>
     </div>`).join('');
 }
 
-async function deleteImage(id, index) {
+window.deleteImage = async function(id, index) {
   const course = courses[id];
   if (!course || !course.imageUrls) return;
   course.imageUrls.splice(index, 1);
   course.updatedAt = new Date().toISOString();
   await saveCourse(id, course);
   renderImageList(id, course.imageUrls);
-}
+};
 
 // ── 4. ADMIN VIEW ─────────────────────────────────────────────────────────────
 function renderAdmin() {
@@ -636,7 +643,7 @@ function renderAdminContent() {
       <p class="sub">從 Excel 複製貼上，每行一堂課（Tab 或 多個空白 分隔）：日期 → 班級 → 時間 → 教室 → 英語老師</p>
       <div class="mono">範例：<br>7/20&nbsp;&nbsp;&nbsp;&nbsp;OAD+OAE&nbsp;&nbsp;&nbsp;&nbsp;8:30~9:20(50m)&nbsp;&nbsp;&nbsp;&nbsp;1B(LH-2)&nbsp;&nbsp;&nbsp;&nbsp;Hank<br>7/20&nbsp;&nbsp;&nbsp;&nbsp;OPF&nbsp;&nbsp;&nbsp;&nbsp;9:30~10:20(50m)&nbsp;&nbsp;&nbsp;&nbsp;6B(LH-2)&nbsp;&nbsp;&nbsp;&nbsp;Kevin</div>
       <textarea id="paste-area" rows="6" placeholder="從 Excel 貼上課表..." style="margin-bottom:8px;font-size:13px"></textarea>
-      <button class="primary" onclick="doImport()">
+      <button class="primary" onclick="window.doImport()">
         <i class="ti ti-upload" style="font-size:14px;margin-right:4px"></i>匯入課表
       </button>
       <p id="import-msg" style="font-size:13px;color:#1E7E34;margin-top:8px;font-weight:600;"></p>
@@ -653,7 +660,7 @@ function renderAdminContent() {
         <input type="text" id="a-room" placeholder="教室">
         <input type="text" id="a-teacher" placeholder="英語老師">
       </div>
-      <button onclick="addSingle()">新增單堂課</button>
+      <button onclick="window.addSingle()">新增單堂課</button>
     </section>
 
     <div class="divider"></div>
@@ -662,9 +669,9 @@ function renderAdminContent() {
       <div class="row" style="justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px;">
         <h3 style="margin:0">所有課程 <span id="course-count" style="color:#888;font-weight:400">(${courseList().length})</span></h3>
         <div class="row" style="gap:6px;flex-wrap:wrap;">
-          <input type="text" id="search" placeholder="搜尋..." style="width:140px;" oninput="renderCourseList()">
-          <button class="danger" onclick="deleteHistoryCourses()" style="padding:6px 10px; font-size:12px;">🗑️ 刪除歷史舊課</button>
-          <button class="danger-filled" onclick="clearAllCourses()" style="padding:6px 10px; font-size:12px;">⚠️ 清空所有課程</button>
+          <input type="text" id="search" placeholder="搜尋..." style="width:140px;" oninput="window.renderCourseList()">
+          <button class="danger" onclick="window.deleteHistoryCourses()" style="padding:6px 10px; font-size:12px;">🗑️ 刪除歷史舊課</button>
+          <button class="danger-filled" onclick="window.clearAllCourses()" style="padding:6px 10px; font-size:12px;">⚠️ 清空所有課程</button>
         </div>
       </div>
       <div id="course-list"></div>
@@ -672,7 +679,7 @@ function renderAdminContent() {
   renderCourseList();
 }
 
-function renderCourseList() {
+window.renderCourseList = function() {
   const filter = (document.getElementById('search')?.value || '').toLowerCase();
   const list = courseList()
     .filter(c => !filter || [c.date, c.className, c.teacher, c.classroom, c.textbook].some(v => (v||'').toLowerCase().includes(filter)))
@@ -689,13 +696,13 @@ function renderCourseList() {
         <span class="course-row-meta" style="margin-left:8px">${fmtDate(c.date)} · ${esc(c.time)} · Rm ${esc(c.classroom)}${c.textbook ? ' ['+esc(c.textbook)+']' : ''}${c.teacher ? ' · ' + esc(c.teacher) : ''}</span>
       </div>
       <span class="badge ${c.lesson ? 'badge-green' : 'badge-orange'}">${c.lesson ? '已填' : '未填'}</span>
-      <button class="danger" onclick="doDelete('${c.id}')" aria-label="刪除" style="padding:4px 8px">
+      <button class="danger" onclick="window.doDelete('${c.id}')" aria-label="刪除" style="padding:4px 8px">
         <i class="ti ti-trash" style="font-size:14px"></i>
       </button>
     </div>`).join('');
-}
+};
 
-async function doImport() {
+window.doImport = async function() {
   const txt = document.getElementById('paste-area').value.trim();
   const msg = document.getElementById('import-msg');
   if (!txt) {
@@ -737,9 +744,9 @@ async function doImport() {
     msg.textContent = `✓ 成功匯入 ${added} 堂課！${skipped ? `(${skipped} 筆格式不符已忽略)` : ''}`;
   }
   document.getElementById('paste-area').value = '';
-}
+};
 
-async function addSingle() {
+window.addSingle = async function() {
   const date = toISO(document.getElementById('a-date').value);
   const className = document.getElementById('a-class').value.trim();
   if (!date || !className) return;
@@ -754,15 +761,15 @@ async function addSingle() {
     createdAt: new Date().toISOString()
   });
   ['a-date','a-class','a-time','a-room','a-teacher'].forEach(id => { document.getElementById(id).value = ''; });
-}
+};
 
-async function doDelete(id) {
+window.doDelete = async function(id) {
   if (!confirm('確定刪除這堂課？')) return;
   await deleteCourse(id);
-  renderCourseList();
-}
+  window.renderCourseList();
+};
 
-async function deleteHistoryCourses() {
+window.deleteHistoryCourses = async function() {
   const today = todayISO();
   const historyList = courseList().filter(c => c.date < today);
   if (!historyList.length) {
@@ -774,9 +781,9 @@ async function deleteHistoryCourses() {
     await set(ref(db, `courses/${c.id}`), null);
   }
   alert(`✓ 成功批量刪除 ${historyList.length} 堂歷史舊課程！`);
-}
+};
 
-async function clearAllCourses() {
+window.clearAllCourses = async function() {
   const total = courseList().length;
   if (total === 0) {
     alert('目前資料庫內沒有任何課程紀錄。');
@@ -785,22 +792,9 @@ async function clearAllCourses() {
   if (!confirm(`⚠️ 警報：這會完全清空資料庫裡所有的課程紀錄 (${total} 堂課)！確定要繼續嗎？`)) return;
   await set(ref(db, 'courses'), null);
   alert('✓ 資料庫已全面重設，所有課程已清空。');
-}
+};
 
-// ── Expose to Global Window Scope ───────────────────────────────────────────
-window.switchTab = switchTab;
-window.selectDay = selectDay;
-window.renderTeacherCourses = renderTeacherCourses;
-window.saveField = saveField;
-window.deleteImage = deleteImage;
-window.renderCourseList = renderCourseList;
-window.doImport = doImport;
-window.addSingle = addSingle;
-window.doDelete = doDelete;
-window.deleteHistoryCourses = deleteHistoryCourses;
-window.clearAllCourses = clearAllCourses;
-
-// ── Init ─────────────────────────────────────────────────────────────────────
+// ── 初始化 ───────────────────────────────────────────────────────────────────
 setTimeout(() => {
   const lod = document.getElementById('loading');
   if (lod) lod.style.display = 'none';
